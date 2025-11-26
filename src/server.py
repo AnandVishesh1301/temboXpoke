@@ -20,7 +20,7 @@ load_dotenv()
 
 mcp = FastMCP("Tembo Task Manager")
 
-TEMBO_BASE_URL = os.getenv("TEMBO_API_BASE_URL", "https://internal.tembo.io")
+TEMBO_BASE_URL = os.getenv("TEMBO_API_BASE_URL", "https://api.tembo.io")
 
 
 def _build_tembo_url(path: str) -> str:
