@@ -36,31 +36,61 @@ def create_tembo_task(
     queue_right_away: bool | None = None,
 ) -> Dict[str, Any]:
     """
-    Create a Tembo coding task via the public API.
+    Create an automated coding task using a Tembo agent (e.g., Claude-based models).
+
+    This tool submits a request to Tembo's public API (`/task/create`) to have an
+    AI-powered coding agent implement a change, fix a bug, refactor code, or add a
+    feature in the specified repositories. When the agent completes the work, a
+    pull request will be opened in the relevant repository (assuming those repos
+    are already configured in Tembo).
+
+    When to use:
+      - To automate implementation of issues, features, bug fixes, refactors, or docs changes.
+      - When you want Tembo's agent to update code across one or more repositories.
 
     Arguments:
-        prompt: Description of the task to be performed.
-        repositories: List of repository URLs the task relates to.
-        agent: Optional Tembo agent identifier (e.g. \"claudeCode:claude-4-5-sonnet\").
-        branch: Optional git branch to target for this task.
-        queue_right_away: Optional flag mapped to Tembo's `queueRightAway`
-            (defaults to Tembo's server-side default when omitted).
+        prompt (str):
+            A clear, detailed summary of the code change or feature to be implemented
+            by the agent. This is the primary task description (required).
+        repositories (list[str]):
+            One or more Git repository URLs that the task should operate on
+            (required). Example: [\"https://github.com/org/repo\"].
+        agent (str, optional):
+            Specific Tembo agent identifier to use, e.g.
+            \"claudeCode:claude-4-5-sonnet\". If omitted, Tembo's server-configured
+            default agent will be used.
+        branch (str, optional):
+            Git branch to target for the new work / pull request. If omitted, Tembo
+            will use its default behavior for branch selection.
+        queue_right_away (bool, optional):
+            If True, explicitly request immediate queuing of the task by Tembo. If
+            omitted, Tembo's default for `queueRightAway` is used (defaults to true
+            per current public API docs).
 
     Returns:
-        A structured dict indicating success or failure. On success:
+        On success:
             {
               \"ok\": True,
-              \"task\": <full Tembo response>,
-              \"id\": ...,
-              \"status\": ...,
+              \"task\": <full Tembo API response>,
+              \"id\": \"...\",
+              \"status\": \"...\",
               ...
             }
+
         On error:
             {
               \"ok\": False,
-              \"error\": <message>,
+              \"error\": <explanation>,
               \"status\": <http status, if available>
             }
+
+    Example:
+        create_tembo_task(
+            prompt=\"Add support for dark mode in the settings page\",
+            repositories=[\"https://github.com/me/project\"],
+            agent=\"claudeCode:claude-4-5-sonnet\",
+            branch=\"feature/dark-mode\",
+        )
     """
     ### API Reference
     # https://docs.tembo.io/api-reference/public-api/create-task
