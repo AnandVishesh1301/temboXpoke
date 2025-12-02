@@ -54,10 +54,10 @@ def create_tembo_task(
             by the agent. This is the primary task description (required).
         repositories (list[str]):
             One or more Git repository URLs that the task should operate on
-            (required). Example: [\"https://github.com/org/repo\"].
+            (required). Example: ["https://github.com/org/repo"].
         agent (str, optional):
             Specific Tembo agent identifier to use, e.g.
-            \"claudeCode:claude-4-5-sonnet\". If omitted, Tembo's server-configured
+            "claudeCode:claude-4-5-sonnet". If omitted, Tembo's server-configured
             default agent will be used.
         branch (str, optional):
             Git branch to target for the new work / pull request. If omitted, Tembo
@@ -70,31 +70,31 @@ def create_tembo_task(
     Returns:
         On success:
             {
-              \"ok\": True,
-              \"task\": <full Tembo API response>,
-              \"id\": \"...\",
-              \"status\": \"...\",
+              "ok": True,
+              "task": <full Tembo API response>,
+              "id": "...",
+              "status": "...",
               ...
             }
 
         On error:
             {
-              \"ok\": False,
-              \"error\": <explanation>,
-              \"status\": <http status, if available>
+              "ok": False,
+              "error": <explanation>,
+              "status": <http status, if available>
             }
 
     Example:
         create_tembo_task(
-            prompt=\"Add support for dark mode in the settings page\",
-            repositories=[\"https://github.com/me/project\"],
-            agent=\"claudeCode:claude-4-5-sonnet\",
-            branch=\"feature/dark-mode\",
+            prompt="Add support for dark mode in the settings page",
+            repositories=["https://github.com/me/project"],
+            agent="claudeCode:claude-4-5-sonnet",
+            branch="feature/dark-mode",
         )
     """
     ### API Reference
     # https://docs.tembo.io/api-reference/public-api/create-task
-    
+
     api_key = os.getenv("TEMBO_API_KEY")
     if not api_key:
         return {
@@ -124,7 +124,6 @@ def create_tembo_task(
     if branch is not None:
         payload["branch"] = branch
     if queue_right_away is not None:
-        
         payload["queueRightAway"] = queue_right_away
 
     headers = {
@@ -168,7 +167,7 @@ def create_tembo_task(
             "error": f"Failed to parse Tembo response JSON: {exc}",
         }
 
-    # Surface key fields as top-level for convenience, keeping full object under \"task\".
+    # Surface key fields as top-level for convenience, keeping full object under "task".
     result: Dict[str, Any] = {
         "ok": True,
         "task": data,
@@ -188,6 +187,183 @@ def create_tembo_task(
                 result[field] = data[field]
 
     return result
+
+
+@mcp.tool
+def check_pr_mergeable(
+    repo_owner: str,
+    repo_name: str,
+    pr_number: int,
+) -> Dict[str, Any]:
+    """
+    Check whether a GitHub pull request is cleanly mergeable or has merge conflicts.
+
+    This tool calls GitHub's Pulls API (`GET /repos/{owner}/{repo}/pulls/{pull_number}`)
+    and inspects the `mergeable` and `mergeable_state` fields to determine if the PR is
+    cleanly mergeable, still being computed, or blocked by conflicts between the head
+    and base branches.
+
+    When to use:
+      - Before triggering an automated change (e.g., a Tembo task) that targets the PR's base branch.
+      - When you want to quickly confirm in chat whether a PR is currently safe to merge.
+      - When triaging PRs to see which ones are clean vs. blocked by conflicts.
+
+    Arguments:
+        repo_owner (str):
+            GitHub organization or user that owns the repository
+            (for example, "tembo-io").
+        repo_name (str):
+            Repository name within that owner
+            (for example, "temboXpoke").
+        pr_number (int):
+            Pull request number to inspect; must be a positive integer.
+
+    Returns:
+        On success:
+            {
+              "ok": True,
+              "pr_number": <int>,
+              "has_conflict": <bool | None>,  # True, False, or None if GitHub is still computing
+              "mergeable": <bool | None>,
+              "mergeable_state": <str | None>,
+              "pr_url": <str | None>,
+              "message": <human-readable summary>,
+              "head_ref": <str | None>,
+              "base_ref": <str | None>,
+            }
+        on error:
+            {
+              "ok": False,
+              "error": <explanation>,
+              "status": <http status, if available>,
+            }
+
+    Notes:
+        Requires the `GITHUB_TOKEN` environment variable to be set with at least
+        "Pull requests: read" access for the relevant repository.
+    """
+    ### API Reference docs:
+    # https://docs.github.com/en/rest/pulls/pulls#get-a-pull-request
+
+    token = os.getenv("GITHUB_TOKEN")
+    if not token:
+        return {
+            "ok": False,
+            "error": (
+                "GITHUB_TOKEN environment variable not set. "
+                "Create a fine-grained PAT with at least 'Pull requests: read' "
+                "access for the relevant repositories."
+            ),
+        }
+
+    if pr_number <= 0:
+        return {
+            "ok": False,
+            "error": "pr_number must be a positive integer.",
+        }
+
+    headers = {
+        "Accept": "application/vnd.github+json",
+        "Authorization": f"Bearer {token}",
+        "X-GitHub-Api-Version": "2022-11-28",
+    }
+
+    url = f"https://api.github.com/repos/{repo_owner}/{repo_name}/pulls/{pr_number}"
+
+    try:
+        response = httpx.get(url, headers=headers, timeout=15.0)
+    except httpx.RequestError as exc:
+        return {
+            "ok": False,
+            "error": f"Network error calling GitHub: {exc}",
+        }
+
+    if response.status_code == 404:
+        return {
+            "ok": False,
+            "error": f"PR #{pr_number} not found in {repo_owner}/{repo_name}.",
+        }
+
+    if response.status_code in (401, 403):
+        # Authentication / authorization issue – surface a clear hint about token scopes.
+        try:
+            data = response.json()
+        except Exception:
+            data = None
+
+        message = None
+        if isinstance(data, dict):
+            message = data.get("message")
+
+        return {
+            "ok": False,
+            "status": response.status_code,
+            "error": (
+                message
+                or f"GitHub authentication/authorization error ({response.status_code}). "
+                "Ensure GITHUB_TOKEN has access to this repository and 'Pull requests: read' scope."
+            ),
+        }
+
+    if response.status_code != 200:
+        return {
+            "ok": False,
+            "status": response.status_code,
+            "error": f"GitHub API error: {response.status_code} {response.text}",
+        }
+
+    try:
+        pr_data = response.json()
+    except Exception as exc:
+        return {
+            "ok": False,
+            "status": response.status_code,
+            "error": f"Failed to parse GitHub PR JSON: {exc}",
+        }
+
+    mergeable = pr_data.get("mergeable")  # true, false, or null (while computing)
+    mergeable_state = pr_data.get("mergeable_state")
+    pr_url = pr_data.get("html_url")
+
+    base = pr_data.get("base") or {}
+    head = pr_data.get("head") or {}
+    base_ref = base.get("ref")
+    head_ref = head.get("ref")
+
+    has_conflict: bool | None
+    status_msg: str
+
+    if mergeable is None:
+        # GitHub is still computing mergeability; caller can retry later if needed.
+        status_msg = (
+            f"GitHub is still computing mergeability for PR #{pr_number}. "
+            "Try again in a few seconds."
+        )
+        has_conflict = None
+    elif mergeable is False or mergeable_state == "dirty":
+        status_msg = (
+            f"PR #{pr_number} has merge conflicts between "
+            f"`{head_ref}` and `{base_ref}`."
+        )
+        has_conflict = True
+    else:
+        status_msg = (
+            f"PR #{pr_number} is clean and mergeable between "
+            f"`{head_ref}` and `{base_ref}`."
+        )
+        has_conflict = False
+
+    return {
+        "ok": True,
+        "pr_number": pr_number,
+        "has_conflict": has_conflict,
+        "mergeable": mergeable,
+        "mergeable_state": mergeable_state,
+        "pr_url": pr_url,
+        "message": status_msg,
+        "head_ref": head_ref,
+        "base_ref": base_ref,
+    }
 
 
 if __name__ == "__main__":
