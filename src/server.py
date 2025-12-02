@@ -54,10 +54,10 @@ def create_tembo_task(
             by the agent. This is the primary task description (required).
         repositories (list[str]):
             One or more Git repository URLs that the task should operate on
-            (required). Example: [\"https://github.com/org/repo\"].
+            (required). Example: ["https://github.com/org/repo"].
         agent (str, optional):
             Specific Tembo agent identifier to use, e.g.
-            \"claudeCode:claude-4-5-sonnet\". If omitted, Tembo's server-configured
+            "claudeCode:claude-4-5-sonnet". If omitted, Tembo's server-configured
             default agent will be used.
         branch (str, optional):
             Git branch to target for the new work / pull request. If omitted, Tembo
@@ -70,31 +70,31 @@ def create_tembo_task(
     Returns:
         On success:
             {
-              \"ok\": True,
-              \"task\": <full Tembo API response>,
-              \"id\": \"...\",
-              \"status\": \"...\",
+              "ok": True,
+              "task": <full Tembo API response>,
+              "id": "...",
+              "status": "...",
               ...
             }
 
         On error:
             {
-              \"ok\": False,
-              \"error\": <explanation>,
-              \"status\": <http status, if available>
+              "ok": False,
+              "error": <explanation>,
+              "status": <http status, if available>
             }
 
     Example:
         create_tembo_task(
-            prompt=\"Add support for dark mode in the settings page\",
-            repositories=[\"https://github.com/me/project\"],
-            agent=\"claudeCode:claude-4-5-sonnet\",
-            branch=\"feature/dark-mode\",
+            prompt="Add support for dark mode in the settings page",
+            repositories=["https://github.com/me/project"],
+            agent="claudeCode:claude-4-5-sonnet",
+            branch="feature/dark-mode",
         )
     """
     ### API Reference
     # https://docs.tembo.io/api-reference/public-api/create-task
-    
+
     api_key = os.getenv("TEMBO_API_KEY")
     if not api_key:
         return {
@@ -124,7 +124,6 @@ def create_tembo_task(
     if branch is not None:
         payload["branch"] = branch
     if queue_right_away is not None:
-        
         payload["queueRightAway"] = queue_right_away
 
     headers = {
@@ -168,7 +167,7 @@ def create_tembo_task(
             "error": f"Failed to parse Tembo response JSON: {exc}",
         }
 
-    # Surface key fields as top-level for convenience, keeping full object under \"task\".
+    # Surface key fields as top-level for convenience, keeping full object under "task".
     result: Dict[str, Any] = {
         "ok": True,
         "task": data,
