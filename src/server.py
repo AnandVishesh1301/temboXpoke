@@ -196,16 +196,53 @@ def check_pr_mergeable(
     pr_number: int,
 ) -> Dict[str, Any]:
     """
-    Check if a GitHub PR can be merged cleanly (no conflicts) using the GitHub REST API.
+    Check whether a GitHub pull request is cleanly mergeable or has merge conflicts.
 
-    This uses `GET /repos/{owner}/{repo}/pulls/{pull_number}` and inspects:
-      - `mergeable` (true, false, or null while GitHub computes it)
-      - `mergeable_state` (e.g., "clean", "dirty", "blocked", "unknown")
+    This tool calls GitHub's Pulls API (`GET /repos/{owner}/{repo}/pulls/{pull_number}`)
+    and inspects the `mergeable` and `mergeable_state` fields to determine if the PR is
+    cleanly mergeable, still being computed, or blocked by conflicts between the head
+    and base branches.
 
-    Returns a compact summary that Poke can surface in chat, including whether
-    there are merge conflicts between the PR head branch and the base branch.
+    When to use:
+      - Before triggering an automated change (e.g., a Tembo task) that targets the PR's base branch.
+      - When you want to quickly confirm in chat whether a PR is currently safe to merge.
+      - When triaging PRs to see which ones are clean vs. blocked by conflicts.
+
+    Arguments:
+        repo_owner (str):
+            GitHub organization or user that owns the repository
+            (for example, "tembo-io").
+        repo_name (str):
+            Repository name within that owner
+            (for example, "temboXpoke").
+        pr_number (int):
+            Pull request number to inspect; must be a positive integer.
+
+    Returns:
+        On success:
+            {
+              "ok": True,
+              "pr_number": <int>,
+              "has_conflict": <bool | None>,  # True, False, or None if GitHub is still computing
+              "mergeable": <bool | None>,
+              "mergeable_state": <str | None>,
+              "pr_url": <str | None>,
+              "message": <human-readable summary>,
+              "head_ref": <str | None>,
+              "base_ref": <str | None>,
+            }
+        on error:
+            {
+              "ok": False,
+              "error": <explanation>,
+              "status": <http status, if available>,
+            }
+
+    Notes:
+        Requires the `GITHUB_TOKEN` environment variable to be set with at least
+        "Pull requests: read" access for the relevant repository.
     """
-    # Official docs:
+    ### API Reference docs:
     # https://docs.github.com/en/rest/pulls/pulls#get-a-pull-request
 
     token = os.getenv("GITHUB_TOKEN")
