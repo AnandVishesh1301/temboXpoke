@@ -189,6 +189,146 @@ def create_tembo_task(
     return result
 
 
+@mcp.tool
+def check_pr_mergeable(
+    repo_owner: str,
+    repo_name: str,
+    pr_number: int,
+) -> Dict[str, Any]:
+    """
+    Check if a GitHub PR can be merged cleanly (no conflicts) using the GitHub REST API.
+
+    This uses `GET /repos/{owner}/{repo}/pulls/{pull_number}` and inspects:
+      - `mergeable` (true, false, or null while GitHub computes it)
+      - `mergeable_state` (e.g., "clean", "dirty", "blocked", "unknown")
+
+    Returns a compact summary that Poke can surface in chat, including whether
+    there are merge conflicts between the PR head branch and the base branch.
+    """
+    # Official docs:
+    # https://docs.github.com/en/rest/pulls/pulls#get-a-pull-request
+
+    token = os.getenv("GITHUB_TOKEN")
+    if not token:
+        return {
+            "ok": False,
+            "error": (
+                "GITHUB_TOKEN environment variable not set. "
+                "Create a fine-grained PAT with at least 'Pull requests: read' "
+                "access for the relevant repositories."
+            ),
+        }
+
+    if pr_number <= 0:
+        return {
+            "ok": False,
+            "error": "pr_number must be a positive integer.",
+        }
+
+    headers = {
+        "Accept": "application/vnd.github+json",
+        "Authorization": f"Bearer {token}",
+        "X-GitHub-Api-Version": "2022-11-28",
+    }
+
+    url = f"https://api.github.com/repos/{repo_owner}/{repo_name}/pulls/{pr_number}"
+
+    try:
+        response = httpx.get(url, headers=headers, timeout=15.0)
+    except httpx.RequestError as exc:
+        return {
+            "ok": False,
+            "error": f"Network error calling GitHub: {exc}",
+        }
+
+    if response.status_code == 404:
+        return {
+            "ok": False,
+            "error": f"PR #{pr_number} not found in {repo_owner}/{repo_name}.",
+        }
+
+    if response.status_code in (401, 403):
+        # Authentication / authorization issue – surface a clear hint about token scopes.
+        try:
+            data = response.json()
+        except Exception:
+            data = None
+
+        message = None
+        if isinstance(data, dict):
+            message = data.get("message")
+
+        return {
+            "ok": False,
+            "status": response.status_code,
+            "error": (
+                message
+                or f"GitHub authentication/authorization error ({response.status_code}). "
+                "Ensure GITHUB_TOKEN has access to this repository and 'Pull requests: read' scope."
+            ),
+        }
+
+    if response.status_code != 200:
+        return {
+            "ok": False,
+            "status": response.status_code,
+            "error": f"GitHub API error: {response.status_code} {response.text}",
+        }
+
+    try:
+        pr_data = response.json()
+    except Exception as exc:
+        return {
+            "ok": False,
+            "status": response.status_code,
+            "error": f"Failed to parse GitHub PR JSON: {exc}",
+        }
+
+    mergeable = pr_data.get("mergeable")  # true, false, or null (while computing)
+    mergeable_state = pr_data.get("mergeable_state")
+    pr_url = pr_data.get("html_url")
+
+    base = pr_data.get("base") or {}
+    head = pr_data.get("head") or {}
+    base_ref = base.get("ref")
+    head_ref = head.get("ref")
+
+    has_conflict: bool | None
+    status_msg: str
+
+    if mergeable is None:
+        # GitHub is still computing mergeability; caller can retry later if needed.
+        status_msg = (
+            f"GitHub is still computing mergeability for PR #{pr_number}. "
+            "Try again in a few seconds."
+        )
+        has_conflict = None
+    elif mergeable is False or mergeable_state == "dirty":
+        status_msg = (
+            f"PR #{pr_number} has merge conflicts between "
+            f"`{head_ref}` and `{base_ref}`."
+        )
+        has_conflict = True
+    else:
+        status_msg = (
+            f"PR #{pr_number} is clean and mergeable between "
+            f"`{head_ref}` and `{base_ref}`."
+        )
+        has_conflict = False
+
+    return {
+        "ok": True,
+        "pr_number": pr_number,
+        "has_conflict": has_conflict,
+        "mergeable": mergeable,
+        "mergeable_state": mergeable_state,
+        "pr_url": pr_url,
+        "message": status_msg,
+        "head_ref": head_ref,
+        "base_ref": base_ref,
+    }
+
+
 if __name__ == "__main__":
     # Render provides PORT; default to 8000 for local dev
     port = int(os.getenv("PORT", "8000"))
