@@ -11,4 +11,5 @@ services:
         sync: false
       - key: TEMBO_API_BASE_URL
         sync: false
-
+      - key: GITHUB_TOKEN
+        sync: false
