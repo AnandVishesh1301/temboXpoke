@@ -4,12 +4,16 @@ An MCP server that lets you create and queue Tembo coding tasks directly from Po
 
 ## Features
 
-- Single MCP tool: `create_tembo_task`.
-- Calls Tembo’s public API `POST /task/create` with:
-  - `prompt`
-  - `repositories`
-  - optional `agent`, `branch`, `queueRightAway`
-- Uses `TEMBO_API_KEY` (and optional `TEMBO_API_BASE_URL`) from the environment.
+- MCP tool: `create_tembo_task`
+  - Calls Tembo’s public API `POST /task/create` with:
+    - `prompt`
+    - `repositories`
+    - optional `agent`, `branch`, `queueRightAway`
+  - Uses `TEMBO_API_KEY` (and optional `TEMBO_API_BASE_URL`) from the environment.
+- MCP tool: `check_pr_mergeable`
+  - Calls GitHub’s REST API `GET /repos/{owner}/{repo}/pulls/{pull_number}`.
+  - Returns whether a PR is cleanly mergeable or has merge conflicts between its head and base branches.
+  - Uses `GITHUB_TOKEN` from the environment with “Pull requests: read” scope.
 
 For the full API shape, see Tembo’s Create Task docs: https://docs.tembo.io/api-reference/public-api/create-task
 
@@ -50,6 +54,7 @@ High level:
 - Set environment variables in the Render dashboard:
   - `TEMBO_API_KEY`
   - `TEMBO_API_BASE_URL` (usually `https://api.tembo.io`)
+  - `GITHUB_TOKEN` (GitHub PAT with at least “Pull requests: read” access)
 
 Once live, your MCP endpoint will be:
 
@@ -66,9 +71,11 @@ In Poke:
    - Name: `Tembo Task Manager`
    - Server URL: `https://<your-service-name>.onrender.com/mcp`
    - API key: leave empty (Tembo auth is handled on the server side).
-3. In a conversation, ask Poke (in natural language) to use the `Tembo Task Manager` integration’s `create_tembo_task` tool to create and queue a task for your repo.
+3. In a conversation, ask Poke (in natural language) to:
+   - use the `create_tembo_task` tool to create and queue a Tembo coding task for your repo, or
+   - use the `check_pr_mergeable` tool to see whether a specific GitHub pull request is cleanly mergeable or has conflicts.
 
-Tembo will pick up the task, run the agent, and open a PR in the configured repository.
+Tembo will pick up created tasks, run the agent, and open PRs in the configured repositories.
 
 ## Self‑hosting for other Tembo accounts
 
