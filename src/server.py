@@ -30,7 +30,7 @@ def _build_tembo_url(path: str) -> str:
 @mcp.tool
 def create_tembo_task(
     prompt: str,
-    repositories: list[str],
+    repositories: list[str] | None = None,
     agent: str | None = None,
     branch: str | None = None,
     queue_right_away: bool | None = None,
@@ -52,9 +52,11 @@ def create_tembo_task(
         prompt (str):
             A clear, detailed summary of the code change or feature to be implemented
             by the agent. This is the primary task description (required).
-        repositories (list[str]):
-            One or more Git repository URLs that the task should operate on
-            (required). Example: ["https://github.com/org/repo"].
+        repositories (list[str], optional):
+            One or more Git repository URLs that the task should operate on.
+            When omitted or None, Tembo will create a more general task (for example,
+            analyzing an issue or doing planning) without being tied to a specific
+            connected repository. Example: ["https://github.com/org/repo"].
         agent (str, optional):
             Specific Tembo agent identifier to use, e.g.
             "claudeCode:claude-4-5-sonnet". If omitted, Tembo's server-configured
@@ -108,16 +110,18 @@ def create_tembo_task(
             "error": "prompt is required and must be non-empty.",
         }
 
-    if not repositories:
-        return {
-            "ok": False,
-            "error": "repositories must be a non-empty list of repository URLs.",
-        }
-
     payload: Dict[str, Any] = {
         "prompt": prompt,
-        "repositories": repositories,
     }
+
+    # Only send repositories when explicitly provided and non-empty.
+    if repositories is not None:
+        if not repositories:
+            return {
+                "ok": False,
+                "error": "repositories must be a non-empty list of repository URLs when provided.",
+            }
+        payload["repositories"] = repositories
 
     if agent is not None:
         payload["agent"] = agent
@@ -152,11 +156,23 @@ def create_tembo_task(
         if isinstance(data, dict):
             error_message = data.get("error")
 
-        return {
+        result: Dict[str, Any] = {
             "ok": False,
             "status": response.status_code,
             "error": error_message or response.text,
         }
+
+        # Special-case common Tembo error for missing repositories to give clearer guidance.
+        if isinstance(error_message, str) and "Some repositories were not found" in error_message:
+            result["details"] = (
+                "Tembo could not find one or more of the repositories you provided. "
+                "Tembo's /task/create API only works for repositories that are connected "
+                "to your Tembo workspace via the GitHub integration. "
+                "Make sure the exact repository (including forks) is added in Tembo and "
+                "then retry with that URL."
+            )
+
+        return result
 
     try:
         data = response.json()
