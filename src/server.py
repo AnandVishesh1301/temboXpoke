@@ -190,6 +190,191 @@ def create_tembo_task(
 
 
 @mcp.tool
+def create_tembo_automation(
+    name: str,
+    aim: str,
+    cron: str,
+    mcp_servers: list[str] | None = None,
+    agent: str | None = None,
+    triggers: list[Dict[str, Any]] | None = None,
+    extra_json_content: Dict[str, Any] | None = None,
+) -> Dict[str, Any]:
+    
+    """
+    Create a scheduled Tembo automation using the public `/automation` API.
+
+    This tool submits a request to Tembo's public API (`POST /automation`) to
+    create an automation that runs on the schedule you specify and performs
+    whatever ongoing work you describe as its aim.
+
+    When to use:
+      - To set up a recurring automation that should run on a cron schedule.
+      - When you want Tembo to continuously perform a specific task or workflow.
+
+    Arguments:
+        name (str):
+            Human‑readable name for the automation shown in Tembo's UI (required).
+        aim (str):
+            Natural‑language description of what the automation should do each
+            time it runs. This is stored under `jsonContent.aim` (required).
+        cron (str):
+            Cron expression defining how frequently the automation should run
+            (for example, "0 * * * *" for hourly). This is used to build the
+            `schedules` array (required).
+        mcp_servers (list[str], optional):
+            List of MCP server identifiers this automation is allowed to call,
+            passed through to the `mcpServers` field.
+        agent (str, optional):
+            Specific Tembo agent identifier to use for the automation, e.g.
+            "claudeCode:claude-4-5-sonnet". If omitted, Tembo's defaults apply.
+        triggers (list[dict], optional):
+            Advanced: raw trigger objects to send as the `triggers` array.
+            Each item should follow the API schema for triggers
+            (see Tembo docs `integrationId`, `name`, `filters`).
+        extra_json_content (dict, optional):
+            Additional arbitrary JSON to merge into `jsonContent` alongside
+            the `aim` field. Keys here must be JSON‑serializable.
+
+    Returns:
+        On success:
+            {
+              "ok": True,
+              "automation": <full Tembo API response>,
+              "id": "...",
+              "name": "...",
+              ...
+            }
+
+        On error:
+            {
+              "ok": False,
+              "error": <explanation>,
+              "status": <http status, if available>
+            }
+
+    API reference:
+        https://api.tembo.io/#tag/public-api/post/automation
+    """
+    
+    api_key = os.getenv("TEMBO_API_KEY")
+    if not api_key:
+        return {
+            "ok": False,
+            "error": "Missing TEMBO_API_KEY env",
+        }
+
+    if not name:
+        return {
+            "ok": False,
+            "error": "name is required and must be non-empty.",
+        }
+
+    if not aim:
+        return {
+            "ok": False,
+            "error": "aim is required and must be non-empty.",
+        }
+
+    if not cron:
+        return {
+            "ok": False,
+            "error": "cron is required and must be a non-empty cron expression string.",
+        }
+
+    json_content: Dict[str, Any] = {"aim": aim}
+
+    if extra_json_content is not None:
+        if not isinstance(extra_json_content, dict):
+            return {
+                "ok": False,
+                "error": "extra_json_content must be an object (dict) if provided.",
+            }
+        json_content.update(extra_json_content)
+
+    payload: Dict[str, Any] = {
+        "name": name,
+        "jsonContent": json_content,
+        "schedules": [
+            {
+                "cron": cron,
+            }
+        ],
+    }
+
+    if mcp_servers is not None:
+        payload["mcpServers"] = mcp_servers
+
+    if agent is not None:
+        payload["agent"] = agent
+
+    if triggers is not None:
+        payload["triggers"] = triggers
+
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+    }
+
+    url = _build_tembo_url("/automation")
+
+    try:
+        response = httpx.post(url, json=payload, headers=headers, timeout=30.0)
+    except httpx.RequestError as exc:
+        return {
+            "ok": False,
+            "error": f"Network error calling Tembo: {exc}",
+        }
+
+    if response.status_code != 200:
+        try:
+            data = response.json()
+        except Exception:
+            data = None
+
+        error_message = None
+        if isinstance(data, dict):
+            error_message = data.get("error") or data.get("message")
+
+        return {
+            "ok": False,
+            "status": response.status_code,
+            "error": error_message or response.text,
+        }
+
+    try:
+        data = response.json()
+    except Exception as exc:
+        return {
+            "ok": False,
+            "status": response.status_code,
+            "error": f"Failed to parse Tembo response JSON: {exc}",
+        }
+
+    result: Dict[str, Any] = {
+        "ok": True,
+        "automation": data,
+    }
+
+    if isinstance(data, dict):
+        for field in (
+            "id",
+            "name",
+            "createdAt",
+            "updatedAt",
+            "enabledAt",
+            "agent",
+            "solutionType",
+            "organizationId",
+            "templateId",
+            "archivedAt",
+        ):
+            if field in data:
+                result[field] = data[field]
+
+    return result
+
+
+@mcp.tool
 def check_pr_mergeable(
     repo_owner: str,
     repo_name: str,
