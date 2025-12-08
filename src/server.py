@@ -200,6 +200,62 @@ def create_tembo_automation(
     extra_json_content: Dict[str, Any] | None = None,
 ) -> Dict[str, Any]:
     
+    """
+    Create a scheduled Tembo automation using the public `/automation` API.
+
+    This tool submits a request to Tembo's public API (`POST /automation`) to
+    create an automation that runs on the schedule you specify and performs
+    whatever ongoing work you describe as its aim.
+
+    When to use:
+      - To set up a recurring automation that should run on a cron schedule.
+      - When you want Tembo to continuously perform a specific task or workflow.
+
+    Arguments:
+        name (str):
+            Human‑readable name for the automation shown in Tembo's UI (required).
+        aim (str):
+            Natural‑language description of what the automation should do each
+            time it runs. This is stored under `jsonContent.aim` (required).
+        cron (str):
+            Cron expression defining how frequently the automation should run
+            (for example, "0 * * * *" for hourly). This is used to build the
+            `schedules` array (required).
+        mcp_servers (list[str], optional):
+            List of MCP server identifiers this automation is allowed to call,
+            passed through to the `mcpServers` field.
+        agent (str, optional):
+            Specific Tembo agent identifier to use for the automation, e.g.
+            "claudeCode:claude-4-5-sonnet". If omitted, Tembo's defaults apply.
+        triggers (list[dict], optional):
+            Advanced: raw trigger objects to send as the `triggers` array.
+            Each item should follow the API schema for triggers
+            (see Tembo docs `integrationId`, `name`, `filters`).
+        extra_json_content (dict, optional):
+            Additional arbitrary JSON to merge into `jsonContent` alongside
+            the `aim` field. Keys here must be JSON‑serializable.
+
+    Returns:
+        On success:
+            {
+              "ok": True,
+              "automation": <full Tembo API response>,
+              "id": "...",
+              "name": "...",
+              ...
+            }
+
+        On error:
+            {
+              "ok": False,
+              "error": <explanation>,
+              "status": <http status, if available>
+            }
+
+    API reference:
+        https://api.tembo.io/#tag/public-api/post/automation
+    """
+    
     api_key = os.getenv("TEMBO_API_KEY")
     if not api_key:
         return {
