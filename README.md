@@ -2,6 +2,10 @@
 
 An MCP server that lets you create and queue Tembo coding tasks directly from Poke, then let Tembo open pull requests in your GitHub repos. SHIP FROM YOUR DMs!!!
 
+## System Design
+
+View the system design for this **temboXpoke** MCP here: https://www.tldraw.com/f/3uq7pVSxz6JT-vF9auBLx?d=v-525.663.5211.3440.6mhIry789YL_NDkqqQ-p-
+
 ## Features
 
 - MCP tool: `create_tembo_task`
@@ -49,7 +53,7 @@ This starts a FastMCP HTTP server on `http://localhost:8000/mcp`.
 
 ## Deploying to Render
 
-This repo includes a `render.yaml` modeled on InteractionCo’s MCP server template.
+This repo includes a `render.yaml` modeled on InteractionCo's MCP server template. Refer to this link for InteractionCo's official FastMCP Render deployment template: https://github.com/InteractionCo/mcp-server-template
 
 High level:
 
@@ -94,5 +98,7 @@ If someone else wants to use this MCP with **their own** Tembo organization:
 
 Your MCP code stays the same; the Tembo org is determined entirely by the API key in the environment.
 
+## Coming Soon
 
+**Auth**: Working on adding auth so that anyone can MCP directly without needing to self host or manage their own deployment. Stay tuned!
 
